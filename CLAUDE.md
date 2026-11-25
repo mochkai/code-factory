@@ -12,7 +12,7 @@ Python 3.12+, uv, pydantic v2 + pydantic-settings, typer. Later milestones add l
 src/code_factory/   package (config.py, doctor.py, cli.py, ...)
 tests/              pytest tests (conftest.py isolates env vars and the cwd)
 docs/plan.md        design and milestones
-.env.example        every setting; the real .env is git-ignored
+.env.example        every setting; the real file lives at ~/.config/code-factory/.env
 ```
 
 ## Commands
@@ -35,5 +35,6 @@ Run all four before reporting work as done.
 - Update `changelog.md` (Keep a Changelog, `## [Unreleased]`) with every change.
 - Work on a branch and open a pull request; never commit to `master` directly. The human merges.
 - Never call the real Claude in tests. Use recorded/mocked runners; tests that must hit Claude are marked `@pytest.mark.live` and are opt-in (`uv run pytest -m live`), never run in CI.
+- Settings are read from env vars and one fixed file (`$CF_ENV_FILE`, else `$XDG_CONFIG_HOME/code-factory/.env`, default `~/.config/code-factory/.env`; keep it `chmod 600`). Never read `./.env` from the cwd: `cf` runs inside untrusted repos. Setup: `mkdir -p ~/.config/code-factory && cp .env.example ~/.config/code-factory/.env && chmod 600 ~/.config/code-factory/.env`.
 - Never print or commit `.env` values. `cf config` redacts secrets and email addresses; keep it that way for new settings (use `SecretStr` or add the field to `SENSITIVE_FIELDS` in `cli.py`).
 - The HTTP API binds to loopback only; `ANTHROPIC_API_KEY` must stay unset unless `CF_ALLOW_API_KEY=true`.

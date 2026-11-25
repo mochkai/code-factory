@@ -17,14 +17,19 @@ The agent instructions it uses live in a separate repo, [mochkai/agents](https:/
 
 ```sh
 uv sync                 # create .venv and install
-cp .env.example .env    # optional: adjust settings (.env is git-ignored)
-uv run cf doctor        # check tools, logins and directories
+
+# optional: settings file (a fixed location; see Configuration)
+mkdir -p ~/.config/code-factory
+cp .env.example ~/.config/code-factory/.env
+chmod 600 ~/.config/code-factory/.env
+
+uv run cf doctor        # check tools, logins, directories and the settings file
 uv run cf config        # show the effective settings (secrets redacted)
 ```
 
 ## Configuration
 
-Settings come from environment variables and `.env` in the current directory (environment variables win). New settings use the `CF_` prefix (`CF_CONCURRENCY`, `CF_API_TOKEN`, ...); the notification keys keep the old agent farm names (`NOTIFY_EMAIL`, `NOTIFY_ON`, `MSMTP_ACCOUNT`, `NOTIFY_FROM_NAME`, `NOTIFY_FROM`). See [.env.example](.env.example) for every setting.
+Settings come from environment variables and one `.env` file (environment variables win). The file is `$CF_ENV_FILE` if set, otherwise `$XDG_CONFIG_HOME/code-factory/.env` (default `~/.config/code-factory/.env`). A `.env` in the current directory is **never** read, so running `cf` inside another repo cannot pick up that repo's settings. `cf config` prints which file was used, and `cf doctor` warns if it is missing or readable by others (it should be `chmod 600`). New settings use the `CF_` prefix (`CF_CONCURRENCY`, `CF_API_TOKEN`, ...); the notification keys keep the old agent farm names (`NOTIFY_EMAIL`, `NOTIFY_ON`, `MSMTP_ACCOUNT`, `NOTIFY_FROM_NAME`, `NOTIFY_FROM`). See [.env.example](.env.example) for every setting.
 
 ## Development
 

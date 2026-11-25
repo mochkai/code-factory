@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 import typer
 from pydantic import SecretStr, ValidationError
 
 from code_factory import __version__
-from code_factory.config import Settings, load_settings
+from code_factory.config import Settings, load_settings, resolve_env_file
 from code_factory.doctor import Status, has_blocking_failure, run_checks
 
 REDACTED = "***"
@@ -47,13 +48,29 @@ def main(
     """code-factory: drive Claude coding agents from task to pull request."""
 
 
-def _settings_or_exit() -> Settings:
-    """Load settings, turning a validation error into a clean CLI error."""
+def format_validation_error(exc: ValidationError) -> str:
+    """Describe invalid settings by field and message only, never echoing the input values.
+
+    Args:
+        exc: The validation error raised while loading settings.
+
+    Returns:
+        One line per error, e.g. `  api_host: Value error, api_host must be loopback ...`.
+    """
+    lines = ["Invalid settings:"]
+    for error in exc.errors(include_input=False, include_url=False):
+        location = ".".join(str(part) for part in error["loc"]) or "(settings)"
+        lines.append(f"  {location}: {error['msg']}")
+    return "\n".join(lines)
+
+
+def _settings_or_exit(env_file: Path) -> Settings:
+    """Load settings from `env_file`, turning a validation error into a clean CLI error."""
     try:
-        return load_settings()
+        return load_settings(env_file)
     except ValidationError as exc:
-        typer.echo(f"Invalid settings:\n{exc}", err=True)
-        raise typer.Exit(code=2) from exc
+        typer.echo(format_validation_error(exc), err=True)
+        raise typer.Exit(code=2) from None
 
 
 def format_setting(name: str, value: object) -> str:
@@ -97,7 +114,10 @@ def settings_rows(settings: Settings) -> list[tuple[str, str]]:
 @app.command("config")
 def config_command() -> None:
     """Print the effective settings, with secrets redacted."""
-    rows = settings_rows(_settings_or_exit())
+    env_file = resolve_env_file()
+    rows = settings_rows(_settings_or_exit(env_file))
+    state = "" if env_file.is_file() else " (not found)"
+    typer.echo(f"env file: {env_file}{state}\n")
     width = max(len(name) for name, _ in rows)
     typer.echo(f"{'setting':<{width}}  value")
     typer.echo(f"{'-' * width}  {'-' * 5}")
@@ -108,7 +128,8 @@ def config_command() -> None:
 @app.command("doctor")
 def doctor_command() -> None:
     """Check that the tools and logins code-factory needs are in place."""
-    results = run_checks(_settings_or_exit())
+    env_file = resolve_env_file()
+    results = run_checks(_settings_or_exit(env_file), env_file)
     width = max(len(r.name) for r in results)
     for r in results:
         suffix = "" if r.required else " (optional)"

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -273,6 +274,31 @@ def check_skills_dir(skills_dir: Path) -> CheckResult:
     return _check_listing("skills_dir", skills_dir, list_skills)
 
 
+def check_env_file(path: Path) -> CheckResult:
+    """Check that the `.env` file exists and is readable only by its owner.
+
+    Args:
+        path: The `.env` file code-factory reads (from `resolve_env_file`).
+
+    Returns:
+        The check result; never blocking, since every setting has a default.
+    """
+    name = "env_file"
+    if not path.is_file():
+        return CheckResult(
+            name, Status.WARN, f"{path} not found: using defaults and env vars", required=False
+        )
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode & 0o077:
+        return CheckResult(
+            name,
+            Status.WARN,
+            f"{path} has permissions {mode:04o}, wider than 0600 (run `chmod 600 {path}`)",
+            required=False,
+        )
+    return CheckResult(name, Status.OK, f"{path} (0600)", required=False)
+
+
 def check_msmtp(which: Which) -> CheckResult:
     """Check whether msmtp is installed (optional: only needed for email notifications).
 
@@ -292,6 +318,7 @@ def check_msmtp(which: Which) -> CheckResult:
 
 def run_checks(
     settings: Settings,
+    env_file: Path,
     *,
     run: Runner = run_command,
     which: Which = shutil.which,
@@ -302,6 +329,7 @@ def run_checks(
 
     Args:
         settings: The effective settings.
+        env_file: The `.env` file the settings were loaded from.
         run: Command runner (injectable for tests).
         which: Executable lookup (injectable for tests).
         env: Environment to inspect; defaults to `os.environ`.
@@ -319,6 +347,7 @@ def run_checks(
         check_api_key(environ, settings.allow_api_key),
         check_agents_dir(settings.agents_dir),
         check_skills_dir(settings.skills_dir),
+        check_env_file(env_file),
         check_msmtp(which),
     ]
 

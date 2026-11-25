@@ -13,6 +13,7 @@ from code_factory.doctor import (
     Status,
     check_api_key,
     check_claude,
+    check_env_file,
     check_gh,
     check_git,
     check_msmtp,
@@ -137,26 +138,28 @@ def test_listings(dirs: Settings) -> None:
     assert list_skills(dirs.skills_dir) == ["debugging"]
 
 
-def test_run_checks_all_ok(dirs: Settings) -> None:
-    results = run_checks(dirs, run=healthy_runner(), which=which_all, env={})
+def test_run_checks_all_ok(dirs: Settings, env_file: Path) -> None:
+    env_file.write_text("")
+    env_file.chmod(0o600)
+    results = run_checks(dirs, env_file, run=healthy_runner(), which=which_all, env={})
     assert [r.status for r in results] == [Status.OK] * len(results)
     agents = next(r for r in results if r.name == "agents_dir")
     assert "coder, tester" in agents.detail
     assert not has_blocking_failure(results)
 
 
-def test_run_checks_missing_dirs(tmp_path: Path) -> None:
+def test_run_checks_missing_dirs(tmp_path: Path, env_file: Path) -> None:
     settings = Settings(agents_dir=tmp_path / "nope", skills_dir=tmp_path)
-    results = run_checks(settings, run=healthy_runner(), which=which_all, env={})
+    results = run_checks(settings, env_file, run=healthy_runner(), which=which_all, env={})
     by_name = {r.name: r for r in results}
     assert by_name["agents_dir"].status is Status.FAIL
     assert by_name["skills_dir"].status is Status.FAIL  # exists but has no skills
     assert has_blocking_failure(results)
 
 
-def test_run_checks_api_key_blocks(dirs: Settings) -> None:
+def test_run_checks_api_key_blocks(dirs: Settings, env_file: Path) -> None:
     results = run_checks(
-        dirs, run=healthy_runner(), which=which_all, env={"ANTHROPIC_API_KEY": "k"}
+        dirs, env_file, run=healthy_runner(), which=which_all, env={"ANTHROPIC_API_KEY": "k"}
     )
     assert has_blocking_failure(results)
 
@@ -173,6 +176,30 @@ def test_run_checks_api_key_blocks(dirs: Settings) -> None:
 def test_doctor_command_exit_code(
     monkeypatch: pytest.MonkeyPatch, results: list[CheckResult], exit_code: int
 ) -> None:
-    monkeypatch.setattr(cli, "run_checks", lambda settings: results)
+    monkeypatch.setattr(cli, "run_checks", lambda settings, env_file: results)
     result = CliRunner().invoke(cli.app, ["doctor"])
     assert result.exit_code == exit_code, result.output
+
+
+def test_env_file_missing(env_file: Path) -> None:
+    result = check_env_file(env_file)
+    assert result.status is Status.WARN
+    assert "not found" in result.detail
+    assert not result.blocking
+
+
+@pytest.mark.parametrize("mode", [0o644, 0o640, 0o604])
+def test_env_file_too_open(env_file: Path, mode: int) -> None:
+    env_file.write_text("")
+    env_file.chmod(mode)
+    result = check_env_file(env_file)
+    assert result.status is Status.WARN
+    assert f"{mode:04o}" in result.detail
+    assert not result.blocking
+
+
+@pytest.mark.parametrize("mode", [0o600, 0o400])
+def test_env_file_private(env_file: Path, mode: int) -> None:
+    env_file.write_text("")
+    env_file.chmod(mode)
+    assert check_env_file(env_file).status is Status.OK
