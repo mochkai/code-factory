@@ -1,0 +1,22 @@
+# Secrets and local config: never commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
+
+# Runtime data (SQLite DBs, checkpoints, worktrees, logs)
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
